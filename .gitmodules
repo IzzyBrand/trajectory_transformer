@@ -1,0 +1,6 @@
+[submodule "external/TD3-PyTorch-BipedalWalker-v2"]
+	path = external/TD3-PyTorch-BipedalWalker-v2
+	url = https://github.com/nikhilbarhate99/TD3-PyTorch-BipedalWalker-v2.git
+[submodule "external/pytorch_car_caring"]
+	path = external/pytorch_car_caring
+	url = https://github.com/xtma/pytorch_car_caring.git
