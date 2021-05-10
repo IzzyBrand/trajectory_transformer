@@ -21,6 +21,7 @@ class FeedForward(nn.Module):
             modules.append(nn.LeakyReLU())
 
         modules.pop(-1)  # don't include the last nonlinearity
+        modules.append(nn.BatchNorm1d(all_dims[-1]))
         self.layers = nn.Sequential(*modules)  # add modules to net
 
     def forward(self, *xs):
@@ -125,7 +126,9 @@ class TemporalTransformer(nn.Module):
         # timestep is a continuation of a previous high level action
         self.gnn = nn.Sequential(
             GraphNetLayer(s_in + a_in, self.h_dim),
-            nn.ReLU(),
+            nn.Tanh(),
+            GraphNetLayer(self.h_dim, self.h_dim),
+            nn.Tanh(),
             GraphNetLayer(self.h_dim, s_out + g_out + 1),
         )
 
@@ -159,6 +162,21 @@ class TemporalTransformer(nn.Module):
         g_block = torch.einsum("nhd, nth -> nthd", (g * alpha), alpha_block)
         return g_block.sum(axis=2)
 
+    def extend_goals_hard(self, g, alpha):
+        N, T, _ = g.shape
+        assert N == 1
+        g = g[0]
+        alpha = alpha[0]
+
+        new_g = []
+        for t in range(T):
+            if t == 0:
+                new_g.append(torch.where(alpha[t] > 0, g[t], torch.zeros_like(g[t])))
+            else:
+                new_g.append(torch.where(alpha[t] > 0, g[t], new_g[-1]))
+
+        return torch.stack(new_g, axis=0)[None, ...]
+
     def encode(self, s, a):
         x = torch.cat([s, a], axis=2)
         x = self.gnn(x)
@@ -186,8 +204,9 @@ class TemporalTransformer(nn.Module):
             [type] -- [description]
         """
         indecision = alpha * (1 - alpha)
-        distribution = (s ** 2).mean(axis=2) + (g ** 2).mean(axis=2)
-        return indecision
+        distribution = ((s ** 2).mean(axis=2, keepdim=True) + (g ** 2).mean(axis=2, keepdim=True)) * alpha
+        prior = alpha
+        return prior
 
 
 if __name__ == "__main__":
