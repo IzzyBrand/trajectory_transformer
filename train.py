@@ -11,12 +11,14 @@ from torch.utils.data import DataLoader, TensorDataset
 from model import TemporalTransformer
 
 
-def train(model, dataset, optimizer, batch_size=128):
+def train(model, dataset, optimizer, batch_size=256, ref_traj=None):
     losses = []
     alphas = []
     bce_loss = nn.BCEWithLogitsLoss(reduce=False)
 
-    train_dynamics = True
+    use_prior = False
+    train_dynamics = False
+    train_correspondence = False
 
     for s, a in DataLoader(dataset, batch_size=batch_size, shuffle=False):
         optimizer.zero_grad()
@@ -25,6 +27,7 @@ def train(model, dataset, optimizer, batch_size=128):
         # so the batch dimension is 1 [N x T x D]
         s = s[None, ...]
         a = a[None, ...]
+
         # encode the batch of trajectories
         s_new, g, alpha = model.encode(s, a)
 
@@ -34,7 +37,7 @@ def train(model, dataset, optimizer, batch_size=128):
             hard_alpha = p_alpha.sample()
         log_probs = p_alpha.log_prob(hard_alpha).mean()
 
-        prior_losses = model.nll(s_new, g, hard_alpha)
+        prior_losses = model.nll(s_new, g, hard_alpha) * use_prior
 
         dynamics_loss = torch.Tensor([0])
         if train_dynamics:
@@ -42,7 +45,7 @@ def train(model, dataset, optimizer, batch_size=128):
             # batch dimension. I think that's ok because we might always
             # end up training this with a batch size of 1 (where each batch
             # is one trajectory)
-            for i in range(s.shape[0]):
+            for i in range(s.shape[0]):  # for each traj in the batch
                 mask = hard_alpha[i, :, 0].bool()
                 if mask.sum() < 3:
                     break  # we need multiple steps
@@ -51,15 +54,27 @@ def train(model, dataset, optimizer, batch_size=128):
                 short_s_recon = model.f(short_s[:-1], short_g[:-1])
                 dynamics_loss += ((short_s_recon - short_s[1:]) ** 2).mean()
 
+        correspondence_loss = torch.Tensor([0])
+        if train_correspondence:
+            # NOTE: I couldn't think of a way to vectorize this along the
+            # batch dimension. I think that's ok because we might always
+            # end up training this with a batch size of 1 (where each batch
+            # is one trajectory)
+            for i in range(s.shape[0]):  # for each traj in the batch
+                mask = hard_alpha[i, :, 0].bool()
+                short_s = s_new[i, mask]
+                short_s_recon = model.c(s[i, mask])
+                correspondence_loss += ((short_s_recon - short_s) ** 2).mean()
+
         # use the alpha mask to extend the high level goals for their duration
         g = model.extend_goals_hard(g, hard_alpha)
         # use the high level goals to reconstruct low level actions
         a_recon = model.decode(s, g)
         # and the quality of the reconstruction
-        recon_losses = bce_loss(a_recon, a) * 5
+        recon_losses = bce_loss(a_recon, a)
         # recon_loss = recon_losses.mean()
 
-        per_timestep_losses = prior_losses + recon_losses + dynamics_loss
+        per_timestep_losses = prior_losses + recon_losses + dynamics_loss + correspondence_loss
         loss = per_timestep_losses.mean()
 
         # use REINFORCE to estimate the gradients of the alpha parameters
@@ -69,14 +84,19 @@ def train(model, dataset, optimizer, batch_size=128):
         loss.backward()
         optimizer.step()
 
+
+
         if alpha.shape[1] == batch_size:
             losses.append([loss.item(),
-                           prior_losses.mean().item(),
-                           recon_losses.mean().item(),
-                           dynamics_loss.item(),
-                           reinforce_loss.item()])
+                   prior_losses.mean().item(),
+                   recon_losses.mean().item(),
+                   dynamics_loss.item(),
+                   reinforce_loss.item()])
+            if ref_traj is None:
+                alphas.append(alpha.detach()[0, :, 0].numpy())
 
-            alphas.append(alpha.detach()[0, :, 0].numpy())
+        if ref_traj is not None:
+            alphas.append(model.encode(ref_traj[0][None, :300, :], ref_traj[1][None, :300, :])[2][0, :, 0].detach().numpy())
 
     return losses, alphas
 
@@ -104,13 +124,13 @@ def get_datasets(folder="data/BipedalWalker-v2"):
 def main():
     tt = TemporalTransformer(24, 4, 2, 10)
     optimizer = optim.Adam(tt.parameters(), lr=1e-3)
-
+    ref_traj = next(get_datasets()).tensors
     losses = []
     alphas = []
     try:
         for epoch_idx in range(3):
             for i, d in enumerate(get_datasets()):
-                new_losses, new_alphas = train(tt, d, optimizer)
+                new_losses, new_alphas = train(tt, d, optimizer, ref_traj=ref_traj)
                 losses += new_losses
                 alphas += new_alphas
                 print(f'Epoch {epoch_idx}:\t{losses[-1]}')

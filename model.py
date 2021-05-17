@@ -7,7 +7,7 @@ from torch.distributions import Bernoulli
 
 
 class FeedForward(nn.Module):
-    def __init__(self, d_in, d_out, h_dims=[32, 32]):
+    def __init__(self, d_in, d_out, h_dims=[32, 32], final_batchnorm=False):
         super(FeedForward, self).__init__()
         self.d_in = d_in
         self.d_out = d_out
@@ -21,7 +21,8 @@ class FeedForward(nn.Module):
             modules.append(nn.LeakyReLU())
 
         modules.pop(-1)  # don't include the last nonlinearity
-        modules.append(nn.BatchNorm1d(all_dims[-1]))
+        if final_batchnorm:
+            modules.append(nn.BatchNorm1d(all_dims[-1]))
         self.layers = nn.Sequential(*modules)  # add modules to net
 
     def forward(self, *xs):
@@ -54,11 +55,13 @@ class GraphNetLayer(nn.Module):
 
         self.edge_fn_layers = FeedForward(self.edge_fn_in,
                                           self.edge_fn_out,
-                                          h_dims=[self.h_dim, self.h_dim])
+                                          h_dims=[self.h_dim, self.h_dim],
+                                          final_batchnorm=True)
 
         self.node_fn_layers = FeedForward(self.node_fn_in,
                                           self.node_fn_out,
-                                          h_dims=[self.h_dim, self.h_dim])
+                                          h_dims=[self.h_dim, self.h_dim],
+                                          final_batchnorm=True)
 
     def edge_fn(self, x):
         N, T, _ = x.shape
@@ -120,6 +123,8 @@ class TemporalTransformer(nn.Module):
         self.pi = GoalConditionedPolicyNet(s_in, g_out, a_in)
         # predict next high level state
         self.f = DynamicsNet(s_out, g_out, s_out)
+        # map from low to high level state
+        self.c = FeedForward(s_in, s_out)
 
         # given a low level state-action trajectory, predict a high level
         # state-action trajectory with an extra bit to indicate if each
