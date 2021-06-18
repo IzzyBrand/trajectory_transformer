@@ -8,7 +8,7 @@ from torch.distributions import Bernoulli
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-from model import TemporalTransformer
+from temporal_transformer import TemporalTransformer
 
 
 def train(model, dataset, optimizer, batch_size=256, ref_traj=None):
