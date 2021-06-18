@@ -288,8 +288,11 @@ if __name__ == "__main__":
     s = torch.rand(1, T, s_in)
     a = torch.rand(1, T, a_in)
     z, g, alpha = tt.encode(s, a)
-    a_recon = tt.decode(s, g, alpha)
-    print(f"High level state expects dim {s_out} and has shape {s_new.shape}")
+    hard_alpha = alpha > 0.5
+    hard_g = tt.extend_goals_hard(g, hard_alpha)
+    a_recon = tt.decode(s, hard_g)
+
+    print(f"High level state expects dim {s_out} and has shape {z.shape}")
     print(f"High level goal expects dim {g_out} and has shape {g.shape}")
     print(f"High level mask expects dim {1} and has shape {alpha.shape}")
     print(f"Reconstructed action expects dim {a_in} and has shape {a_recon.shape}")
