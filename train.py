@@ -1,7 +1,8 @@
-import os
+import argparse
 import h5py
-import numpy as np
 from matplotlib import pyplot as plt
+import numpy as np
+import os
 import torch
 from torch import nn, optim
 from torch.distributions import Bernoulli
@@ -63,29 +64,37 @@ def get_datasets(folder="data/BipedalWalker-v2"):
             yield TensorDataset(state, action)
 
 
-def main():
-    tt = TemporalTransformer(24, 4, 2, 10)
+def main(args):
+    # set up the model. different environments need different params
+    tt_params = { "BipedalWalker-v2": (24, 4, 2, 10),
+                  "CarRacing-v0": (16**2, 3, 4, 3) }
+    tt = TemporalTransformer(*tt_params[args.env])
+
+    # reference trajectory used to plot latents over time
+    ref_traj = next(get_datasets(folder=f"data/{args.env}")).tensors
+
     optimizer = optim.Adam(tt.parameters(), lr=1e-3)
-    ref_traj = next(get_datasets()).tensors
     losses = []
     alphas = []
     try:
         for epoch_idx in range(3):
-            for i, d in enumerate(get_datasets()):
+            for i, d in enumerate(get_datasets(folder=f"data/{args.env}")):
                 new_losses, new_alphas = train(tt, d, optimizer, ref_traj=ref_traj)
                 losses += new_losses
                 alphas += new_alphas
-                print(f'Epoch {epoch_idx}:\t{losses[-1]}')
+                print(f"Epoch {epoch_idx}:\t{losses[-1]}")
     except KeyboardInterrupt:
         print("Stopping Early!")
 
-    print(np.array(losses).shape)
     fig, (ax1, ax2) = plt.subplots(nrows=2, sharex=True)
-    ax1.plot(np.array(losses), label=['loss', 'prior', 'recon', 'dynamics', 'reinforce'])
+    ax1.plot(np.array(losses), label=["loss", "prior", "recon", "dynamics", "reinforce"])
     ax1.legend()
     ax2.imshow(np.array(alphas).T)
     plt.show()
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--env", type=str, default="BipedalWalker-v2", choices=["BipedalWalker-v2", "CarRacing-v0"])
+    args = parser.parse_args()
+    main(args)
