@@ -194,24 +194,76 @@ class TemporalTransformer(nn.Module):
         s = s.view(-1, self.s_in)
         return self.pi(s, g).view(N, T, -1)
 
-    def nll(self, s, g, alpha):
-        """compute the likelihood of the embedding
+    def forward(self, s, a,
+                use_prior = False,
+                train_dynamics = False,
+                train_correspondence = False,
+                return_loss_breakdown = False):
 
-        The embedded high-level state and high-level action
-        should be likely
+        # encode the batch of trajectories
+        z, g, alpha = self.encode(s, a)
 
-        Arguments:
-            s {[type]} -- [description]
-            g {[type]} -- [description]
-            alpha {[type]} -- [description]
+        # harden and save the log probabilities for REINFORCE
+        p_alpha = Bernoulli(alpha)
+        with torch.no_grad():
+            hard_alpha = p_alpha.sample()
 
-        Returns:
-            [type] -- [description]
-        """
-        indecision = alpha * (1 - alpha)
-        distribution = ((s ** 2).mean(axis=2, keepdim=True) + (g ** 2).mean(axis=2, keepdim=True)) * alpha
-        prior = alpha
-        return prior
+        reinforce_log_probs = p_alpha.log_prob(hard_alpha).mean()
+
+        # NOTE: I couldn't think of a way to vectorize this along the
+        # batch dimension. I think that's ok because we might always
+        # end up training this with a batch size of 1 (where each batch
+        # is one trajectory)
+        i = 0 # the first trajectory in the batch
+        mask = hard_alpha[i, :, 0].bool()
+        short_z = z[i, mask]
+        short_g = g[i, mask]
+
+        if not self.training:
+            return short_z, short_g, hard_alpha
+
+        else:
+            bce_loss = nn.BCEWithLogitsLoss(reduce=False)
+            # the prior loss is the number of alpha == 1 (to encourage sparsity)
+            prior_losses = hard_alpha * use_prior
+
+            # compute losses for dynamics and correspondence functions
+            dynamics_loss = torch.Tensor([0])
+            correspondence_loss = torch.Tensor([0])
+
+            if train_dynamics:
+                short_z_recon = self.f(short_z[:-1], short_g[:-1])
+                dynamics_loss += ((short_z_recon - short_z[1:]) ** 2).mean()
+
+            if train_correspondence:
+                short_z_recon = self.c(s[i, mask])
+                correspondence_loss += ((short_z_recon - short_z) ** 2).mean()
+
+            # use the alpha mask to extend the high level goals for their duration
+            hard_g = self.extend_goals_hard(g, hard_alpha)
+            # use the high level goals to reconstruct low level actions
+            a_recon = self.decode(s, hard_g)
+            # and the quality of the reconstruction
+            recon_losses = bce_loss(a_recon, a)
+            # recon_loss = recon_losses.mean()
+
+            per_timestep_losses = prior_losses + recon_losses + dynamics_loss + correspondence_loss
+            loss = per_timestep_losses.mean()
+
+            # use REINFORCE to estimate the gradients of the alpha parameters
+            reinforce_loss = (reinforce_log_probs * per_timestep_losses.detach()).mean()
+            loss += reinforce_loss
+            
+            # return the latents and the losses
+            if not return_loss_breakdown:
+                return short_z, short_g, hard_alpha, loss
+            else:
+                loss_breakdown = [loss.item(),
+                                  prior_losses.mean().item(),
+                                  recon_losses.mean().item(),
+                                  dynamics_loss.item(),
+                                  reinforce_loss.item()]
+                return short_z, short_g, hard_alpha, loss, loss_breakdown 
 
 
 if __name__ == "__main__":
@@ -235,7 +287,7 @@ if __name__ == "__main__":
     T = 100
     s = torch.rand(1, T, s_in)
     a = torch.rand(1, T, a_in)
-    s_new, g, alpha = tt.encode(s, a)
+    z, g, alpha = tt.encode(s, a)
     a_recon = tt.decode(s, g, alpha)
     print(f"High level state expects dim {s_out} and has shape {s_new.shape}")
     print(f"High level goal expects dim {g_out} and has shape {g.shape}")

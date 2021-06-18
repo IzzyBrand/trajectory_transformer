@@ -14,13 +14,9 @@ from model import TemporalTransformer
 def train(model, dataset, optimizer, batch_size=256, ref_traj=None):
     losses = []
     alphas = []
-    bce_loss = nn.BCEWithLogitsLoss(reduce=False)
-
-    use_prior = False
-    train_dynamics = False
-    train_correspondence = False
 
     for s, a in DataLoader(dataset, batch_size=batch_size, shuffle=False):
+        model.train()
         optimizer.zero_grad()
         # implemented the model to have a batch dimension (N) in addition a
         # trajectory dimensions (T). for now our batches are trajectories,
@@ -28,75 +24,21 @@ def train(model, dataset, optimizer, batch_size=256, ref_traj=None):
         s = s[None, ...]
         a = a[None, ...]
 
-        # encode the batch of trajectories
-        s_new, g, alpha = model.encode(s, a)
-
-        # harden and save the log probabilities for REINFORCE
-        p_alpha = Bernoulli(alpha)
-        with torch.no_grad():
-            hard_alpha = p_alpha.sample()
-        log_probs = p_alpha.log_prob(hard_alpha).mean()
-
-        prior_losses = model.nll(s_new, g, hard_alpha) * use_prior
-
-        dynamics_loss = torch.Tensor([0])
-        if train_dynamics:
-            # NOTE: I couldn't think of a way to vectorize this along the
-            # batch dimension. I think that's ok because we might always
-            # end up training this with a batch size of 1 (where each batch
-            # is one trajectory)
-            for i in range(s.shape[0]):  # for each traj in the batch
-                mask = hard_alpha[i, :, 0].bool()
-                if mask.sum() < 3:
-                    break  # we need multiple steps
-                short_s = s_new[i, mask]
-                short_g = g[i, mask]
-                short_s_recon = model.f(short_s[:-1], short_g[:-1])
-                dynamics_loss += ((short_s_recon - short_s[1:]) ** 2).mean()
-
-        correspondence_loss = torch.Tensor([0])
-        if train_correspondence:
-            # NOTE: I couldn't think of a way to vectorize this along the
-            # batch dimension. I think that's ok because we might always
-            # end up training this with a batch size of 1 (where each batch
-            # is one trajectory)
-            for i in range(s.shape[0]):  # for each traj in the batch
-                mask = hard_alpha[i, :, 0].bool()
-                short_s = s_new[i, mask]
-                short_s_recon = model.c(s[i, mask])
-                correspondence_loss += ((short_s_recon - short_s) ** 2).mean()
-
-        # use the alpha mask to extend the high level goals for their duration
-        g = model.extend_goals_hard(g, hard_alpha)
-        # use the high level goals to reconstruct low level actions
-        a_recon = model.decode(s, g)
-        # and the quality of the reconstruction
-        recon_losses = bce_loss(a_recon, a)
-        # recon_loss = recon_losses.mean()
-
-        per_timestep_losses = prior_losses + recon_losses + dynamics_loss + correspondence_loss
-        loss = per_timestep_losses.mean()
-
-        # use REINFORCE to estimate the gradients of the alpha parameters
-        reinforce_loss = (log_probs * per_timestep_losses.detach()).mean()
-        loss += reinforce_loss
+        short_z, short_g, hard_alpha, loss, loss_breakdown = model(s, a, return_loss_breakdown=True)
 
         loss.backward()
         optimizer.step()
 
+        losses.append(loss_breakdown)
 
 
-        if alpha.shape[1] == batch_size:
-            losses.append([loss.item(),
-                   prior_losses.mean().item(),
-                   recon_losses.mean().item(),
-                   dynamics_loss.item(),
-                   reinforce_loss.item()])
-            if ref_traj is None:
-                alphas.append(alpha.detach()[0, :, 0].numpy())
+        if ref_traj is None and hard_alpha.shape[1] == batch_size:
+            alphas.append(hard_alpha.detach()[0, :, 0].numpy())
 
-        if ref_traj is not None:
-            alphas.append(model.encode(ref_traj[0][None, :300, :], ref_traj[1][None, :300, :])[2][0, :, 0].detach().numpy())
+        elif ref_traj is not None:
+            model.eval()
+            alphas.append(model.encode(ref_traj[0][None, :300, :],
+                                       ref_traj[1][None, :300, :])[2][0, :, 0].detach().numpy())
 
     return losses, alphas
 
