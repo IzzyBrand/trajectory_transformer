@@ -4,7 +4,8 @@ from torch import nn
 from torch.nn import functional as F
 from torch.distributions import Bernoulli
 
-from model import GoalConditionedPolicyNet, DynamicsNet, FeedForward, GraphNetLayer
+from models.generic import GoalConditionedPolicyNet, DynamicsNet, FeedForward, GraphNetLayer
+
 
 class TemporalTransformer(nn.Module):
     def __init__(self, s_in, a_in, s_out, g_out):

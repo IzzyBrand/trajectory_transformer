@@ -5,7 +5,7 @@ from torch import nn
 from torch.nn import functional as F
 from torch.distributions import Bernoulli, Normal
 
-from model import GoalConditionedPolicyNet, DynamicsNet, FeedForward, GraphNetLayer
+from models.generic import GoalConditionedPolicyNet, DynamicsNet, FeedForward, GraphNetLayer
 
 
 def halve(x, dim=1):

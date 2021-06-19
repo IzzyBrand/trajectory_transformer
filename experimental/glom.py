@@ -6,7 +6,7 @@ from torch import nn
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 
-from model import FeedForward
+from models.generic import FeedForward
 from train import get_datasets
 
 

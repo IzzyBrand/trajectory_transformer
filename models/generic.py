@@ -107,6 +107,3 @@ class GraphNetLayer(nn.Module):
         return self.node_fn(
             paired_inplace_out + paired_forward_out + paired_backward_out
         )
-
-
-

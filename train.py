@@ -9,7 +9,9 @@ from torch.distributions import Bernoulli
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-from temporal_transformer import TemporalTransformer
+from models.glom_segmenter import GLOMSegmenter
+from models.predictive_segmenter import PredictiveSegmenter
+from models.temporal_transformer import TemporalTransformer
 
 
 def train(model, dataset, optimizer, batch_size=256, ref_traj=None):
