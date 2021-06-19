@@ -60,7 +60,7 @@ def stupid_planner(s, g_dist, f, a_shape,
                 return torch.stack(s_traj), a_traj
             # otherwise, gradient descent and continue
             else:
-                l.backward()
+                l.backward(retain_graph=True)
                 optimizer.step()
 
         return None
@@ -81,10 +81,12 @@ def stupid_planner(s, g_dist, f, a_shape,
 
         return None
 
+    # if we are already at the goal, return an empty plan
     if g_dist(s) < eps:
         print(f"[stupid_planner] Warning, planning not required.")
-        return [s], []
+        return s[None, ...], torch.zeros(0, *a_shape)
 
+    # set the optimizaion function
     opt = diff_opt if use_diff_opt else guess_opt
 
     # for each plan length, see if we can find a plan
@@ -98,7 +100,7 @@ def stupid_planner(s, g_dist, f, a_shape,
 
 
 def sequential_stupid_planner(s, g, fs, cs, a_shapes,
-                              eps=1e-2,
+                              eps=2e-2,
                               use_diff_opt=True):
     """ apply the stupid planner at each level of abstraction
 
@@ -173,9 +175,16 @@ def sequential_stupid_planner(s, g, fs, cs, a_shapes,
         a_trajs.append(a_traj)
 
         # we found a trajectory, so we set the subgoal
-        if l > 0:
+        if l > 0 and len(a_traj) > 1:
+            subgoal = s_traj[1]
             c = cs[l-1]
-            g_dist = lambda x: F.mse_loss(c(x[None,...])[0], s_traj[1])
+            g_dist = lambda x: F.mse_loss(c(x[None,...])[0], subgoal)
+        # otherwise we set g_dist to None. This should only happen when we
+        # found a plan at the level above, and then at this level we realized
+        # we already satisfy that plan, so at the level below we need to plan
+        # to the terminal goal
+        else:
+            g_dist = None
 
 
     # return the action trajectories for each level. we reverse because we
@@ -197,13 +206,26 @@ def test_sequential_stupid_planner():
     fs = []
     cs = []
     for l in range(L):
-        f_l = FeedForward(s_dims[l] + a_dims[l], s_dims[l], nonlinearity=nn.Tanh)
+        f_l = FeedForward(s_dims[l] + a_dims[l], s_dims[l], h_dims=[20], nonlinearity=nn.Tanh)
         fs.append(f_l)
         if l + 1 < L:
-            c_l = FeedForward(s_dims[l], s_dims[l+1], nonlinearity=nn.Tanh)
+            c_l = FeedForward(s_dims[l], s_dims[l+1], h_dims=[20], nonlinearity=nn.Tanh)
             cs.append(c_l)
 
-    sequential_stupid_planner(s, g, fs, cs, a_dims)
+    print('Planning with differentiable optimization')
+    result = sequential_stupid_planner(s, g, fs, cs, a_dims, use_diff_opt=True)
+    if result is not None:
+        print('Planning Success!')
+        for i, (s_traj, a_traj) in enumerate(zip(*result)):
+            print(f'Level {i}. Plan length {a_traj.shape[0]}.')
+
+    print('Planning with random optimization')
+    result = sequential_stupid_planner(s, g, fs, cs, a_dims, use_diff_opt=False)
+    if result is not None:
+        print('Planning Success!')
+        for i, (s_traj, a_traj) in enumerate(zip(*result)):
+            print(f'Level {i}. Plan length {a_traj.shape[0]}.')
+
 
 
 if __name__ == '__main__':
