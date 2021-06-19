@@ -7,7 +7,10 @@ from torch.distributions import Bernoulli
 
 
 class FeedForward(nn.Module):
-    def __init__(self, d_in, d_out, h_dims=[32, 32], final_batchnorm=False):
+    def __init__(self, d_in, d_out,
+                 h_dims=[32, 32],
+                 final_batchnorm=False,
+                 nonlinearity=nn.LeakyReLU):
         super(FeedForward, self).__init__()
         self.d_in = d_in
         self.d_out = d_out
@@ -18,11 +21,12 @@ class FeedForward(nn.Module):
         modules = []
         for i in range(len(all_dims) - 1):
             modules.append(nn.Linear(all_dims[i], all_dims[i+1]))
-            modules.append(nn.LeakyReLU())
+            modules.append(nonlinearity())
 
         modules.pop(-1)  # don't include the last nonlinearity
         if final_batchnorm:
             modules.append(nn.BatchNorm1d(all_dims[-1]))
+
         self.layers = nn.Sequential(*modules)  # add modules to net
 
     def forward(self, *xs):
