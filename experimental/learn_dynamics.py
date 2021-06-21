@@ -29,5 +29,5 @@ class TrajectoryEncoder(nn.Module):
 		self.action = ActionNet(s_in, s_in, a_in)
 
     def likelihood(self, s, a):
-        
+        pass
 

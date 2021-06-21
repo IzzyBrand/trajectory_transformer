@@ -1,6 +1,7 @@
-import torch
-import os
 import h5py
+import os
+import torch
+from torch.utils.data import DataLoader, TensorDataset
 
 
 class Log:
@@ -39,3 +40,23 @@ class Log:
         with h5py.File(dest, "w") as h5f:
             h5f.create_dataset("state", data=np.array(self.s))
             h5f.create_dataset("action", data=np.array(self.a))
+
+
+def get_datasets(folder="data/BipedalWalker-v2"):
+    # TODO: revisit improved dataloader
+    # https://towardsdatascience.com/hdf5-datasets-for-pytorch-631ff1d750f5
+    filenames = [f for f in os.listdir(folder) if f.endswith("h5")]
+
+    for filename in filenames:
+        with h5py.File(folder + "/" + filename) as h5f:
+            state = torch.Tensor(h5f["state"])
+            action = torch.Tensor(h5f["action"])
+
+            if folder == "data/BipedalWalker-v2":
+                # renormalize the action from [-1,1] to [0,1]
+                action = (action + 1) / 2.0
+            elif folder == "data/CarRacing-v0":
+                # preprocess images down to 16 x 16 and flatten
+                state = F.interpolate(state[None, ...], (16, 16)).view(-1, 16 ** 2)
+
+            yield TensorDataset(state, action)

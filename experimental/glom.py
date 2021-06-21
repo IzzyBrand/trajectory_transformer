@@ -7,7 +7,7 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader
 
 from models.generic import FeedForward
-from train import get_datasets
+from util import get_datasets
 
 
 def normalize(x, axis=None):
@@ -24,16 +24,15 @@ def pca(X, d=2):
 
 class TrajectoryGLOM(nn.Module):
 
-    def __init__(self, s_in, a_in, n_levels=5):
+    def __init__(self, d_in, n_levels=5):
         super(TrajectoryGLOM, self).__init__()
-        self.s_in = s_in
-        self.a_in = a_in
+        self.d_in = d_in
         self.h_dim = 32
         self.n_levels = 5
 
-        self._up_net = FeedForward(self.h_dim, self.h_dim, final_batchnorm=True)
-        self._down_net = FeedForward(self.h_dim, self.h_dim, final_batchnorm=True)
-        self.in_net = FeedForward(self.s_in + self.a_in, self.h_dim, final_batchnorm=True)
+        self._up_net = FeedForward(self.h_dim, self.h_dim, h_dims=[32])
+        self._down_net = FeedForward(self.h_dim, self.h_dim, h_dims=[32])
+        self.in_net = FeedForward(self.d_in, self.h_dim, h_dims=[32])
 
     def up_net(self, x):
         return self._up_net(x.view(-1, x.shape[-1])).view(*x.shape)
@@ -104,7 +103,7 @@ def plot_all_layers_separately(hidden):
 
 
 if __name__ == '__main__':
-    tg = TrajectoryGLOM(24, 4)
+    tg = TrajectoryGLOM(28)
 
     for i, dataset in enumerate(get_datasets()):
         for s, a in DataLoader(dataset, batch_size=512, shuffle=False):

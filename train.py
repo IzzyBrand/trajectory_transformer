@@ -1,5 +1,4 @@
 import argparse
-import h5py
 from matplotlib import pyplot as plt
 import numpy as np
 import os
@@ -7,11 +6,12 @@ import torch
 from torch import nn, optim
 from torch.distributions import Bernoulli
 from torch.nn import functional as F
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
 
-from models.glom_segmenter import GLOMSegmenter
+# from models.glom_segmenter import GLOMSegmenter
 from models.predictive_segmenter import PredictiveSegmenter
 from models.temporal_transformer import TemporalTransformer
+from util import get_datasets
 
 
 def train(model, dataset, optimizer, batch_size=256, ref_traj=None):
@@ -44,26 +44,6 @@ def train(model, dataset, optimizer, batch_size=256, ref_traj=None):
                                        ref_traj[1][None, :300, :])[2][0, :, 0].detach().numpy())
 
     return losses, alphas
-
-
-def get_datasets(folder="data/BipedalWalker-v2"):
-    # TODO: revisit improved dataloader
-    # https://towardsdatascience.com/hdf5-datasets-for-pytorch-631ff1d750f5
-    filenames = [f for f in os.listdir(folder) if f.endswith("h5")]
-
-    for filename in filenames:
-        with h5py.File(folder + "/" + filename) as h5f:
-            state = torch.Tensor(h5f["state"])
-            action = torch.Tensor(h5f["action"])
-
-            if folder == "data/BipedalWalker-v2":
-                # renormalize the action from [-1,1] to [0,1]
-                action = (action + 1) / 2.0
-            elif folder == "data/CarRacing-v0":
-                # preprocess images down to 16 x 16 and flatten
-                state = F.interpolate(state[None, ...], (16, 16)).view(-1, 16 ** 2)
-
-            yield TensorDataset(state, action)
 
 
 def main(args):

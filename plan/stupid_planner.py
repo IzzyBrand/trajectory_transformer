@@ -100,7 +100,7 @@ def stupid_planner(s, g_dist, f, a_shape,
 
 
 def sequential_stupid_planner(s, g, fs, cs, a_shapes,
-                              eps=2e-2,
+                              eps=5e-2,
                               use_diff_opt=True):
     """ apply the stupid planner at each level of abstraction
 

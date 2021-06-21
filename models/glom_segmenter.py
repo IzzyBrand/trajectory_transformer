@@ -25,5 +25,9 @@ class GLOMSegmenter(nn.Module):
         self.f = DynamicsNet(z_out, g_out, 2*z_out)
         # map from low to high level state
         self.c = FeedForward(s_in, 2*z_out)
-        # action recognition
-        self.r = FeedForward(s_in + a_in, 2*g_out)
+
+        self.glom = TrajectoryGLOM()
+
+
+    def encode(self, s, a):
+        pass
