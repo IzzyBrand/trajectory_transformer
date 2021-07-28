@@ -1,3 +1,9 @@
+""" WORK IN PROGRESS
+
+this is a half-baked idea to use the structure of the generative model in
+concert with recognition nets to infer the latent distribution -- no iteration
+"""
+
 from matplotlib import pyplot as plt
 import numpy as np
 import torch

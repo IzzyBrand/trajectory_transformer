@@ -4,13 +4,12 @@ import numpy as np
 import os
 import torch
 from torch import nn, optim
-from torch.distributions import Bernoulli
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 
 # from models.glom_segmenter import GLOMSegmenter
 from models.predictive_segmenter import PredictiveSegmenter
-from models.temporal_transformer import TemporalTransformer
+from models.alpha_segmenter import AlphaSegmenter
 from util import get_datasets
 
 
@@ -50,7 +49,7 @@ def main(args):
     # set up the model. different environments need different params
     tt_params = { "BipedalWalker-v2": (24, 4, 2, 10),
                   "CarRacing-v0": (16**2, 3, 4, 3) }
-    tt = TemporalTransformer(*tt_params[args.env])
+    tt = AlphaSegmenter(*tt_params[args.env])
 
     # reference trajectory used to plot latents over time
     ref_traj = next(get_datasets(folder=f"data/{args.env}")).tensors

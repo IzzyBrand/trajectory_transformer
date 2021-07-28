@@ -1,3 +1,5 @@
+""" generic NN components for implementing various models
+"""
 import numpy as np
 from matplotlib import pyplot as plt
 import torch
